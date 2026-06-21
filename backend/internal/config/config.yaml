@@ -1,0 +1,32 @@
+app:
+  name: DailyFeed
+  env: development
+  debug: false
+
+database:
+  pool_size: 20
+  max_overflow: 40
+
+schedule:
+  hour: 8
+  minute: 0
+  timezone: Asia/Shanghai
+  fetch_window_hours: 24
+
+sources:
+  rss:
+    enabled: true
+    default_limit: 50
+
+channels:
+  email:
+    enabled: true
+  wechat:
+    enabled: false
+  dingtalk:
+    enabled: false
+
+agent:
+  timeout_seconds: 600
+  max_retries: 3
+  fetcher_concurrency: 5

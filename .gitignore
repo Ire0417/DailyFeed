@@ -1,0 +1,138 @@
+# ============================================================
+# DailyFeed · 防止 API 密钥 / 个人信息 / 构建产物 被提交
+# 请勿删除以下任何块。
+# ============================================================
+
+# ---------- 1. 环境变量与密钥文件（最高优先级排除） ----------
+# 任何路径下的 .env 文件都会被忽略；只保留仓库根目录的 .env.example
+.env
+.env.*
+!.env.example
+
+# 常见云服务 / SSH 密钥
+*.key
+*.pem
+*.p12
+*.pfx
+*.pub
+*.crt
+*.csr
+id_rsa
+id_dsa
+id_ed25519
+
+# K8s / Docker Secret
+secrets.yml
+secrets.yaml
+docker-secrets/
+
+# ---------- 2. Python 字节码 / 缓存 / 虚拟环境 ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.eggs/
+*.egg-info/
+*.egg
+build/
+dist/
+
+# 虚拟环境（常见命名）
+venv/
+venv-*/
+.venv
+.venv.*
+env/
+ENV/
+local/
+.python-version
+
+# ---------- 3. Node / 前端构建产物 ----------
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.next/
+frontend/.nuxt/
+frontend/build/
+frontend/.cache/
+
+# npm / yarn / pnpm 锁冲突产物
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.yarn/cache/
+.yarn/unplugged/
+
+# ---------- 4. IDE / 编辑器（个人配置不入库） ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ---------- 5. 本地数据库文件（SQLite / 锁） ----------
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.dump
+*.sql
+dailyfeed.db
+backend/dailyfeed.db
+
+# ---------- 6. 日志文件 ----------
+*.log
+logs/
+backend/logs/
+api.log
+run.log
+server.log
+gunicorn.log
+access.log
+error.log
+
+# ---------- 7. Docker 挂载卷 / 本地数据 ----------
+data/
+postgres-data/
+redis-data/
+uploads/
+storage/
+.pgdata
+
+# ---------- 8. 临时文件 / 操作系统 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+*.bak
+*.tmp
+*.old
+
+# ---------- 9. 其他可能泄露身份的文件 ----------
+*.local
+*.bak
+# OAuth / Service Account JSON （如 google-service-account.json）
+service-account*.json
+credentials*.json
+gcp-*.json
+aws-*.json
+
+# ---------- 10. 环境锁文件（生产部署用，视情况决定是否入库） ----------
+# 如团队统一管理锁文件，可删除下面两行
+# Pipfile.lock
+# package-lock.json

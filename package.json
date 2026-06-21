@@ -1,0 +1,14 @@
+{
+  "name": "dailyfeed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DailyFeed - 每日摘要全栈项目 (前端 React + 后端 FastAPI)",
+  "scripts": {
+    "install:frontend": "cd frontend && npm install",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "dev:backend": "cd backend && python run_server.py",
+    "start:frontend": "cd frontend && npm run dev",
+    "start:backend": "cd backend && python run_server.py"
+  }
+}
