@@ -4,18 +4,17 @@ import time
 from internal.config.settings import settings
 from internal.infrastructure.monitoring.logger import get_logger, log_extra
 from internal.orchestrator.message_bus import message_bus, STREAM_SCHEDULE, STREAM_FETCH, STREAM_SUMMARY, STREAM_AGGREGATE, STREAM_PUSH
-from internal.orchestrator.registry import agent_registry
 from internal.orchestrator.supervisor import supervisor
+from internal.orchestrator.conversation_context import ensure_context
+from internal.memory import get_memory_router, AccessLevel
+
+from internal.orchestrator.registry import agent_registry
 
 
 class BaseAgent:
     """
-    Base class for all DailyFeed agents. Handles lifecycle, heartbeats,
-    message consumption, and graceful shutdown.
-
-    Subclasses override:
-        - streams: streams to consume
-        - process(payload): handle a single message payload
+    所有agent统一交互协议
+    方便orchestrator统一调度
     """
 
     name = "base"
@@ -28,6 +27,8 @@ class BaseAgent:
         self._last_heartbeat = 0.0
         self._streams: list[str] = []
         self._last_ids: dict[str, str] = {}
+        self.memory = get_memory_router()
+        self._declare_memory_acl()
 
     # ---------- Lifecycle ----------
     def start(self):
@@ -76,10 +77,39 @@ class BaseAgent:
 
     def _handle_message(self, stream: str, message: dict):
         payload = message.get("payload", {})
+        context = ensure_context(payload)
+        user_id = int(context.get("user_id") or payload.get("user_id") or 0)
         task_id = f"{self.name}:{message.get('id')}:{payload.get('event')}"
         supervisor.start(task_id)
         try:
+            if user_id > 0:
+                session_id = context.setdefault("memo", {}).get("session_id")
+                session_id = self.memory.open_session(
+                    user_id=user_id,
+                    session_id=session_id,
+                    agent_name=self.name,
+                )
+                context["memo"]["session_id"] = session_id
+                self.memory.add_agent_message(
+                    session_id,
+                    self.name,
+                    f"received {payload.get('event')}",
+                    agent_name=self.name,
+                )
+                context["memo"]["task_id"] = self.memory.start_task(
+                    owner=self.name,
+                    user_id=user_id,
+                    agent_name=self.name,
+                )
             result = self.process(stream, payload)
+            if user_id > 0:
+                self.memory.remember_long_term(
+                    kind=self._memory_kind_for_result(),
+                    content=f"{self.name} handled event={payload.get('event')} result={bool(result)}",
+                    user_id=user_id,
+                    tags=[self.name, str(payload.get("event") or "")],
+                    agent_name=self.name,
+                )
             supervisor.record_success(self.name)
             return result
         except Exception as exc:
@@ -96,3 +126,15 @@ class BaseAgent:
     # ---------- To override ----------
     def process(self, stream: str, payload: dict):
         return None
+
+    def _memory_kind_for_result(self):
+        from internal.memory import MemoryKind
+        return MemoryKind.LTM
+
+    def _declare_memory_acl(self):
+        self.memory.declare_agent(
+            self.name,
+            global_shared=AccessLevel.READ_WRITE,
+            session_isolated=AccessLevel.READ_WRITE,
+            task_specific=AccessLevel.READ_WRITE,
+        )

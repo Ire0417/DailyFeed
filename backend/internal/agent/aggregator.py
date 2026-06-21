@@ -16,6 +16,7 @@ from internal.infrastructure.database.models import (
 from internal.infrastructure.database.repositories.report_repo import ReportRepository
 from internal.infrastructure.database.repositories.user_repo import UserRepository
 from internal.pipeline.aggregator.report_builder import ReportBuilder
+from internal.orchestrator.conversation_context import ensure_context, append_history
 
 
 class AggregatorAgent(BaseAgent):
@@ -34,12 +35,13 @@ class AggregatorAgent(BaseAgent):
         self._builder = ReportBuilder()
 
     def process(self, stream: str, payload: dict):
+        context = ensure_context(payload, default_next_agent="pusher")
         event = payload.get("event")
         if event == "summary.completed":
             user_id = int(payload.get("user_id") or 0)
             if user_id <= 0:
                 return None
-            self._aggregate(user_id)
+            self._aggregate(user_id, context)
             return {"ok": True, "user_id": user_id}
         return None
 
@@ -68,11 +70,11 @@ class AggregatorAgent(BaseAgent):
             await asyncio.sleep(self.poll_interval_seconds)
 
     # ---------- Aggregation ----------
-    def _aggregate(self, user_id: int):
+    def _aggregate(self, user_id: int, context: dict):
         self.logger.info("aggregator: start user_id=%d", user_id)
         report_id = None
 
-        message_bus.emit_aggregate_started(user_id=user_id)
+        message_bus.emit_aggregate_started(user_id=user_id, conversation=context)
 
         with get_session() as session:
             report_repo = ReportRepository(session)
@@ -141,7 +143,28 @@ class AggregatorAgent(BaseAgent):
                 created = report_repo.create(report)
                 report_id = created.id
 
-        message_bus.emit_aggregate_completed(user_id=user_id, report_id=report_id or 0)
+        append_history(
+            context,
+            agent=self.name,
+            message=f"aggregated report_id={report_id or 0}",
+            next_agent="pusher",
+            summary=f"report ready: {report_id or 0}",
+            memo_updates={"report_id": report_id or 0},
+        )
+        task_id = (context.get("memo") or {}).get("task_id")
+        if task_id:
+            self.memory.log_step(
+                task_id,
+                "aggregate",
+                f"generated report {report_id or 0}",
+                payload={"report_id": report_id or 0},
+                agent_name=self.name,
+            )
+        message_bus.emit_aggregate_completed(
+            user_id=user_id,
+            report_id=report_id or 0,
+            conversation=context,
+        )
         self.logger.info(
             "aggregator: done user_id=%d report_id=%d",
             user_id, report_id,

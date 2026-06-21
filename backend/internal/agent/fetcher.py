@@ -9,7 +9,11 @@ from internal.infrastructure.database.session import get_session
 from internal.infrastructure.database.models import ContentModel
 from internal.infrastructure.database.repositories.subscription_repo import SubscriptionRepository
 from internal.infrastructure.database.repositories.content_repo import ContentRepository
+
+
 from internal.pipeline.fetcher.factory import FetcherFactory
+from internal.orchestrator.conversation_context import ensure_context, append_history
+
 from internal.utils.hash_utils import fingerprint
 
 
@@ -28,12 +32,13 @@ class FetcherAgent(BaseAgent):
         self._streams = [STREAM_SCHEDULE]
 
     def process(self, stream: str, payload: dict):
+        context = ensure_context(payload, default_next_agent="summarizer")
         event = payload.get("event")
         if event == "schedule.triggered":
             user_id = int(payload.get("user_id") or 0)
             if user_id <= 0:
                 return None
-            self._fetch_for_user(user_id)
+            self._fetch_for_user(user_id, context)
             return {"ok": True, "user_id": user_id}
         return None
 
@@ -62,7 +67,7 @@ class FetcherAgent(BaseAgent):
             await asyncio.sleep(self.poll_interval_seconds)
 
     # ---------- Fetching ----------
-    def _fetch_for_user(self, user_id: int):
+    def _fetch_for_user(self, user_id: int, context: dict):
         self.logger.info("fetcher: start for user_id=%d", user_id)
         since = datetime.utcnow() - timedelta(hours=settings.fetch_window_hours)
 
@@ -78,7 +83,7 @@ class FetcherAgent(BaseAgent):
             subscription_count = len(subscriptions)
 
             # emit started event (so observability can track progress)
-            message_bus.emit_fetch_started(user_id=user_id, source_count=subscription_count)
+            message_bus.emit_fetch_started(user_id=user_id, source_count=subscription_count, conversation=context)
 
             for sub in subscriptions:
                 try:
@@ -97,7 +102,29 @@ class FetcherAgent(BaseAgent):
                         sub.id, exc,
                     )
 
-        message_bus.emit_fetch_completed(user_id=user_id, content_ids=content_ids, count=total_new)
+        append_history(
+            context,
+            agent=self.name,
+            message=f"fetched {total_new} new items from {subscription_count} subscriptions",
+            next_agent="summarizer",
+            summary=f"fetch completed: {total_new} new contents",
+            memo_updates={"content_ids": content_ids, "count": total_new},
+        )
+        task_id = (context.get("memo") or {}).get("task_id")
+        if task_id:
+            self.memory.log_step(
+                task_id,
+                "fetch",
+                f"collected {total_new} contents",
+                payload={"count": total_new},
+                agent_name=self.name,
+            )
+        message_bus.emit_fetch_completed(
+            user_id=user_id,
+            content_ids=content_ids,
+            count=total_new,
+            conversation=context,
+        )
         self.logger.info(
             "fetcher: done user_id=%d subscriptions=%d new_items=%d",
             user_id, subscription_count, total_new,

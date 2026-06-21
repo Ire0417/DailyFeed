@@ -63,6 +63,4 @@ class AgentRegistry:
             for name, entry in self._agents.items()
             if now - entry["last_heartbeat"] > idle_timeout
         ]
-
-
 agent_registry = AgentRegistry()

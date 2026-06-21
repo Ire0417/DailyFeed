@@ -8,6 +8,7 @@ from internal.orchestrator.registry import agent_registry
 from internal.infrastructure.database.session import get_session
 from internal.infrastructure.database.models import UserModel
 from internal.infrastructure.monitoring import metrics
+from internal.orchestrator.conversation_context import ensure_context, append_history
 
 
 class SchedulerAgent(BaseAgent):
@@ -28,10 +29,11 @@ class SchedulerAgent(BaseAgent):
         self._last_run_date = ""
 
     def process(self, stream: str, payload: dict):
+        context = ensure_context(payload, default_next_agent="fetcher")
         event = payload.get("event")
         if event == "schedule.manual":
             user_id = payload.get("user_id", 0)
-            self._trigger_for_user(user_id)
+            self._trigger_for_user(user_id, context)
             return {"ok": True, "user_id": user_id}
         return None
 
@@ -78,22 +80,52 @@ class SchedulerAgent(BaseAgent):
             self._trigger_all_users()
             self._last_run_date = key
 
-    def _trigger_all_users(self):
+    def _trigger_all_users(self, base_context: dict | None = None):
         self.logger.info("scheduler: triggering daily run")
         count = 0
         with get_session() as session:
             users = session.query(UserModel).filter(UserModel.is_active == True).limit(1000).all()
             for user in users:
-                message_bus.emit_schedule_triggered(user_id=user.id)
+                context = {
+                    "user_id": user.id,
+                    "plan": (base_context or {}).get("plan", "scheduled pipeline run"),
+                    "summary": (base_context or {}).get("summary", ""),
+                    "next_agent": "fetcher",
+                    "memo": dict((base_context or {}).get("memo") or {}),
+                    "history": list((base_context or {}).get("history") or []),
+                }
+                append_history(
+                    context,
+                    agent=self.name,
+                    message="daily schedule triggered",
+                    next_agent="fetcher",
+                    memo_updates={"trigger": "daily"},
+                )
+                message_bus.emit_schedule_triggered(user_id=user.id, conversation=context)
                 count += 1
         metrics.counter("scheduler.triggers_emitted", count)
         metrics.gauge("scheduler.active_users", count)
         self.logger.info("scheduler: emitted %d triggers", count)
 
-    def _trigger_for_user(self, user_id: int):
+    def _trigger_for_user(self, user_id: int, context: dict | None = None):
         if user_id == 0:
-            self._trigger_all_users()
+            self._trigger_all_users(context)
             return
-        message_bus.emit_schedule_triggered(user_id=user_id)
+        current = context or {
+            "user_id": user_id,
+            "plan": "manual pipeline run",
+            "summary": "",
+            "next_agent": "fetcher",
+            "memo": {},
+            "history": [],
+        }
+        append_history(
+            current,
+            agent=self.name,
+            message="manual schedule triggered",
+            next_agent="fetcher",
+            memo_updates={"trigger": "manual"},
+        )
+        message_bus.emit_schedule_triggered(user_id=user_id, conversation=current)
         metrics.counter("scheduler.manual_triggers", 1)
         self.logger.info("scheduler: manual trigger for user_id=%d", user_id)

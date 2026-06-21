@@ -20,7 +20,7 @@ logger = get_logger("api")
 app = FastAPI(
     title="DailyFeed API",
     version="0.2.0",
-    description="每日摘要 — 聚合你订阅的 RSS / GitHub / B 站动态并生成摘要报告",
+    description="DailyFeed",
 )
 
 app.add_middleware(

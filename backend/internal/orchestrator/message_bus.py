@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 from internal.infrastructure.cache.redis_client import redis_client
 from internal.infrastructure.monitoring.logger import get_logger
+from internal.orchestrator.conversation_context import new_context
 
 logger = get_logger("message_bus")
 
@@ -89,28 +90,41 @@ class MessageBus:
         return messages
 
     # ---------- Convenience event publishers ----------
-    def emit_schedule_triggered(self, user_id: int = 0):
+    def emit_schedule_triggered(self, user_id: int = 0, conversation: dict | None = None):
+        ctx = conversation or new_context(
+            user_id=user_id,
+            plan="scheduler trigger -> fetch -> summarize -> aggregate -> push",
+            next_agent="fetcher",
+        )
         return self.publish(
             STREAM_SCHEDULE,
             {
                 "event": "schedule.triggered",
                 "user_id": user_id,
+                "conversation": ctx,
                 "at": datetime.utcnow().isoformat(),
             },
         )
 
-    def emit_fetch_started(self, user_id: int, source_count: int):
+    def emit_fetch_started(self, user_id: int, source_count: int, conversation: dict | None = None):
         return self.publish(
             STREAM_FETCH,
             {
                 "event": "fetch.started",
                 "user_id": user_id,
                 "source_count": source_count,
+                "conversation": conversation,
                 "at": datetime.utcnow().isoformat(),
             },
         )
 
-    def emit_fetch_completed(self, user_id: int, content_ids: list[int], count: int):
+    def emit_fetch_completed(
+        self,
+        user_id: int,
+        content_ids: list[int],
+        count: int,
+        conversation: dict | None = None,
+    ):
         return self.publish(
             STREAM_FETCH,
             {
@@ -118,22 +132,30 @@ class MessageBus:
                 "user_id": user_id,
                 "content_ids": content_ids,
                 "count": count,
+                "conversation": conversation,
                 "at": datetime.utcnow().isoformat(),
             },
         )
 
-    def emit_summary_started(self, user_id: int, content_count: int):
+    def emit_summary_started(self, user_id: int, content_count: int, conversation: dict | None = None):
         return self.publish(
             STREAM_SUMMARY,
             {
                 "event": "summary.started",
                 "user_id": user_id,
                 "content_count": content_count,
+                "conversation": conversation,
                 "at": datetime.utcnow().isoformat(),
             },
         )
 
-    def emit_summary_completed(self, user_id: int, summary_ids: list[int], count: int):
+    def emit_summary_completed(
+        self,
+        user_id: int,
+        summary_ids: list[int],
+        count: int,
+        conversation: dict | None = None,
+    ):
         return self.publish(
             STREAM_SUMMARY,
             {
@@ -141,32 +163,41 @@ class MessageBus:
                 "user_id": user_id,
                 "summary_ids": summary_ids,
                 "count": count,
+                "conversation": conversation,
                 "at": datetime.utcnow().isoformat(),
             },
         )
 
-    def emit_aggregate_started(self, user_id: int):
+    def emit_aggregate_started(self, user_id: int, conversation: dict | None = None):
         return self.publish(
             STREAM_AGGREGATE,
             {
                 "event": "aggregate.started",
                 "user_id": user_id,
+                "conversation": conversation,
                 "at": datetime.utcnow().isoformat(),
             },
         )
 
-    def emit_aggregate_completed(self, user_id: int, report_id: int):
+    def emit_aggregate_completed(self, user_id: int, report_id: int, conversation: dict | None = None):
         return self.publish(
             STREAM_AGGREGATE,
             {
                 "event": "aggregate.completed",
                 "user_id": user_id,
                 "report_id": report_id,
+                "conversation": conversation,
                 "at": datetime.utcnow().isoformat(),
             },
         )
 
-    def emit_push_started(self, user_id: int, report_id: int, channel: str):
+    def emit_push_started(
+        self,
+        user_id: int,
+        report_id: int,
+        channel: str,
+        conversation: dict | None = None,
+    ):
         return self.publish(
             STREAM_PUSH,
             {
@@ -174,11 +205,19 @@ class MessageBus:
                 "user_id": user_id,
                 "report_id": report_id,
                 "channel": channel,
+                "conversation": conversation,
                 "at": datetime.utcnow().isoformat(),
             },
         )
 
-    def emit_push_completed(self, user_id: int, report_id: int, channel: str, status: str):
+    def emit_push_completed(
+        self,
+        user_id: int,
+        report_id: int,
+        channel: str,
+        status: str,
+        conversation: dict | None = None,
+    ):
         return self.publish(
             STREAM_PUSH,
             {
@@ -187,6 +226,7 @@ class MessageBus:
                 "report_id": report_id,
                 "channel": channel,
                 "status": status,
+                "conversation": conversation,
                 "at": datetime.utcnow().isoformat(),
             },
         )
